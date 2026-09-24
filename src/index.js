@@ -75,12 +75,72 @@ async function handleClassify(request, env) {
   }
 }
 
+const DEBUG_SAMPLES = [
+  {
+    label: '明らかに重要(人からの個別連絡)',
+    subject: '至急ご確認ください:明日の会議について',
+    from: '田中太郎 <tanaka@example.com>',
+    snippet: '明日14時からの会議の件でご確認したいことがあります。資料を添付しましたのでご確認お願いします。',
+  },
+  {
+    label: '明らかに支払い(請求書)',
+    subject: 'ご請求書発行のお知らせ(2026年9月分)',
+    from: 'AWS請求 <billing@aws.example.com>',
+    snippet: '2026年9月分のご利用料金は12,340円です。お支払い期限は10月15日です。',
+  },
+  {
+    label: '明らかに通知(システム通知)',
+    subject: 'セキュリティ通知',
+    from: 'Google <no-reply@accounts.google.com>',
+    snippet: 'アカウントで新しいデバイスからのログインを検知しました。',
+  },
+];
+
+async function handleDebug(env) {
+  try {
+    const results = await Promise.all(
+      DEBUG_SAMPLES.map(async (sample) => ({
+        label: sample.label,
+        input: sample,
+        rawAnswer: (
+          await env.AI.run('typesafe/jev', {
+            state: JSON.stringify({
+              subject: sample.subject,
+              from: sample.from,
+              snippet: sample.snippet,
+            }),
+            questions: {
+              category: {
+                type: 'choice',
+                instructions: 'このメール(件名・送信者・本文冒頭)を最も当てはまるカテゴリに分類して',
+                criteria: CATEGORIES,
+              },
+            },
+          })
+        ).answers?.category,
+      }))
+    );
+    return new Response(JSON.stringify({ results }, null, 2), {
+      headers: { 'content-type': 'application/json' },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: String(err?.message || err), stack: err?.stack }, null, 2), {
+      status: 500,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
     if (url.pathname === '/api/classify' && request.method === 'POST') {
       return handleClassify(request, env);
+    }
+
+    if (url.pathname === '/api/debug-classify') {
+      return handleDebug(env);
     }
 
     // 静的アセット(フロントエンドのHTML)
