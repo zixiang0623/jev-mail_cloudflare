@@ -5,40 +5,36 @@ const CATEGORIES = {
   other: 'その他(上記のいずれにも当てはまらないもの)',
 };
 
-function buildQuestions(mails) {
-  const questions = {};
-  mails.forEach((mail, i) => {
-    questions[`cat_${i}`] = {
-      type: 'choice',
-      instructions: `state配列のインデックス${i}のメール(件名・送信者・本文冒頭)を分類して`,
-      criteria: CATEGORIES,
-    };
+async function classifyOne(env, mail) {
+  // Jevは「1つのstateに対して複数の異なる観点の質問をする」用途向けのモデルなので、
+  // 配列にまとめて「i番目だけ見て」と指示するより、メール単体をstateにした方が確実。
+  const state = JSON.stringify({
+    subject: mail.subject,
+    from: mail.from,
+    snippet: mail.snippet,
   });
-  return questions;
-}
-
-async function classifyBatch(env, mails) {
-  // Jevは1リクエスト = 1state + 複数questionsを並列評価する仕組みなので、
-  // バッチ内の複数メールは「配列state + メールごとに1問」の形でまとめて1回のリクエストに載せる。
-  const state = JSON.stringify(
-    mails.map((m, i) => ({
-      index: i,
-      subject: m.subject,
-      from: m.from,
-      snippet: m.snippet,
-    }))
-  );
 
   const result = await env.AI.run('typesafe/jev', {
     state,
-    questions: buildQuestions(mails),
+    questions: {
+      category: {
+        type: 'choice',
+        instructions: 'このメール(件名・送信者・本文冒頭)を最も当てはまるカテゴリに分類して',
+        criteria: CATEGORIES,
+      },
+    },
   });
 
-  return mails.map((mail, i) => ({
+  return {
     ...mail,
-    category: result.answers?.[`cat_${i}`]?.choice || 'other',
-    confidence: result.answers?.[`cat_${i}`]?.confidence ?? null,
-  }));
+    category: result.answers?.category?.choice || 'other',
+    confidence: result.answers?.category?.confidence ?? null,
+  };
+}
+
+async function classifyBatch(env, mails) {
+  // Jevは1回70〜500ms程度と高速なので、バッチ内は並列に投げる。
+  return Promise.all(mails.map((mail) => classifyOne(env, mail)));
 }
 
 async function handleClassify(request, env) {

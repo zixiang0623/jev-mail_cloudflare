@@ -25,7 +25,7 @@ Workers AI binding を使うため、環境変数やAPIキーの設定は不要(
 
 ## 分類ロジックについて
 
-Jevは「1つのstateに対して複数questionsを並列評価する」仕組みなので、10件をまとめて1リクエストで処理するために、バッチ内のメールを配列にした1つのstateと、メールごとに1問(`cat_0`, `cat_1`, ...)のquestionsを組み立てている(`src/index.js` の `buildQuestions` / `classifyBatch`)。1バッチ = Jev API 1コールになる。
+Jevは「1つのstateに対して複数の異なる観点のquestionsを並列評価する」モデルなので、複数メールを1つの配列stateに詰めて「i番目だけ見て」と指示する方式は指示が曖昧になりやすく、実際に全件「その他」に倒れる不具合が出た。現在は1メール = 1回のJev呼び出し(state=メール単体、questions=`category`の1問のみ)に変更し、バッチ内(10件)は`Promise.all`で並列実行している(`src/index.js` の `classifyOne` / `classifyBatch`)。
 
 ## 未対応・今後の課題
 
