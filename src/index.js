@@ -99,26 +99,26 @@ const DEBUG_SAMPLES = [
 async function handleDebug(env) {
   try {
     const results = await Promise.all(
-      DEBUG_SAMPLES.map(async (sample) => ({
-        label: sample.label,
-        input: sample,
-        rawAnswer: (
-          await env.AI.run('typesafe/jev', {
-            state: JSON.stringify({
-              subject: sample.subject,
-              from: sample.from,
-              snippet: sample.snippet,
-            }),
-            questions: {
-              category: {
-                type: 'choice',
-                instructions: 'このメール(件名・送信者・本文冒頭)を最も当てはまるカテゴリに分類して',
-                criteria: CATEGORIES,
-              },
+      DEBUG_SAMPLES.map(async (sample) => {
+        const response = await env.AI.run('typesafe/jev', {
+          state: JSON.stringify({
+            subject: sample.subject,
+            from: sample.from,
+            snippet: sample.snippet,
+          }),
+          questions: {
+            category: {
+              type: 'choice',
+              instructions: 'このメール(件名・送信者・本文冒頭)を最も当てはまるカテゴリに分類して',
+              criteria: CATEGORIES,
             },
-          })
-        ).answers?.category,
-      }))
+          },
+        });
+        return {
+          label: sample.label,
+          fullResponse: response, // .answers.categoryだけでなく生のレスポンス全体を確認する
+        };
+      })
     );
     return new Response(JSON.stringify({ results }, null, 2), {
       headers: { 'content-type': 'application/json' },
