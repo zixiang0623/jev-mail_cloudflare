@@ -27,6 +27,8 @@ Workers AI binding を使うため、環境変数やAPIキーの設定は不要(
 
 Jevは「1つのstateに対して複数の異なる観点のquestionsを並列評価する」モデルなので、複数メールを1つの配列stateに詰めて「i番目だけ見て」と指示する方式は指示が曖昧になりやすく、実際に全件「その他」に倒れる不具合が出た。現在は1メール = 1回のJev呼び出し(state=メール単体、questions=`category`の1問のみ)に変更し、バッチ内(10件)は`Promise.all`で並列実行している(`src/index.js` の `classifyOne` / `classifyBatch`)。
 
+またAI Gateway経由で呼んでいる場合、`env.AI.run()`のレスポンスは公式ドキュメントの形(`response.answers`)ではなく `response.result.answers` と一段ラップされる(`gatewayMetadata`フィールドの有無で判別可能)。`extractAnswer()`で両方のパスに対応している。動作確認用に `/api/debug-classify` で生のレスポンス形を見られるようにしてある。
+
 ## 未対応・今後の課題
 
 - CORS: `public/index.html` から `/api/classify` は同一オリジンなので問題ないが、Vercel側のURLは別オリジン。Vercel側の `ALLOWED_ORIGIN` にこのWorkerのURLを設定しておくこと

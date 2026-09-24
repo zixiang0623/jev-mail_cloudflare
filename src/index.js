@@ -5,6 +5,12 @@ const CATEGORIES = {
   other: 'その他(上記のいずれにも当てはまらないもの)',
 };
 
+function extractAnswer(response, key) {
+  // AI Gateway経由だと { state, result: { model, answers, usage }, gatewayMetadata } の形で
+  // 一段ラップされる。Gatewayを介さない場合は { model, answers, usage } が直接返る想定なので、両方に対応する。
+  return response?.result?.answers?.[key] ?? response?.answers?.[key];
+}
+
 async function classifyOne(env, mail) {
   // Jevは「1つのstateに対して複数の異なる観点の質問をする」用途向けのモデルなので、
   // 配列にまとめて「i番目だけ見て」と指示するより、メール単体をstateにした方が確実。
@@ -14,7 +20,7 @@ async function classifyOne(env, mail) {
     snippet: mail.snippet,
   });
 
-  const result = await env.AI.run('typesafe/jev', {
+  const response = await env.AI.run('typesafe/jev', {
     state,
     questions: {
       category: {
@@ -25,10 +31,12 @@ async function classifyOne(env, mail) {
     },
   });
 
+  const answer = extractAnswer(response, 'category');
+
   return {
     ...mail,
-    category: result.answers?.category?.choice || 'other',
-    confidence: result.answers?.category?.confidence ?? null,
+    category: answer?.choice || 'other',
+    confidence: answer?.confidence ?? null,
   };
 }
 
@@ -116,7 +124,8 @@ async function handleDebug(env) {
         });
         return {
           label: sample.label,
-          fullResponse: response, // .answers.categoryだけでなく生のレスポンス全体を確認する
+          extractedAnswer: extractAnswer(response, 'category'), // 実際にコードが読む値
+          fullResponse: response, // 生のレスポンス全体(形の確認用)
         };
       })
     );
