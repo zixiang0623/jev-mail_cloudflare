@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>メール仕分け</title>
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --card: #ffffff;
+    --border: #e2e0da;
+    --text: #2c2c2a;
+    --muted: #767570;
+    --accent: #185fa5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px 16px 64px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+
+  .config {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+  .config label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .config input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  button#fetchBtn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button#fetchBtn:disabled { opacity: 0.5; cursor: default; }
+
+  .status { margin: 14px 0; font-size: 13px; color: var(--muted); min-height: 18px; }
+
+  .cat-group { margin-top: 20px; }
+  .cat-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .cat-count {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--muted);
+  }
+
+  .mail-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .mail-subject { font-size: 14px; font-weight: 500; margin-bottom: 2px; }
+  .mail-meta { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .mail-snippet { font-size: 12px; color: var(--text); opacity: 0.8; }
+
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 10px;
+  }
+  .badge-notice   { background: #E6F1FB; color: #0C447C; }
+  .badge-payment  { background: #FAEEDA; color: #633806; }
+  .badge-important{ background: #FCEBEB; color: #791F1F; }
+  .badge-other    { background: #F1EFE8; color: #444441; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>メール仕分け</h1>
+  <p class="sub">直近のメールをIMAPで取得し、Jevで通知・支払い・重要・その他に自動分類します。</p>
+
+  <div class="config">
+    <label for="vercelUrl">IMAP取得APIのURL(Vercel)</label>
+    <input id="vercelUrl" type="text" placeholder="https://your-project.vercel.app/api/fetch-mail">
+  </div>
+
+  <button id="fetchBtn">メールを取得</button>
+  <div class="status" id="status"></div>
+  <div id="results"></div>
+</div>
+
+<script>
+const CATEGORY_LABELS = {
+  notice: '通知',
+  payment: '支払い',
+  important: '重要',
+  other: 'その他',
+};
+const CATEGORY_ORDER = ['important', 'payment', 'notice', 'other'];
+
+const $ = (sel) => document.querySelector(sel);
+const fetchBtn = $('#fetchBtn');
+const statusEl = $('#status');
+const resultsEl = $('#results');
+const urlInput = $('#vercelUrl');
+
+// 前回入力したVercel URLを保持
+urlInput.value = localStorage.getItem('vercelUrl') || '';
+urlInput.addEventListener('change', () => {
+  localStorage.setItem('vercelUrl', urlInput.value.trim());
+});
+
+function chunk(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+async function fetchMails(vercelUrl) {
+  const sep = vercelUrl.includes('?') ? '&' : '?';
+  const res = await fetch(`${vercelUrl}${sep}limit=100`);
+  if (!res.ok) throw new Error(`メール取得に失敗しました (HTTP ${res.status})`);
+  const data = await res.json();
+  return data.messages || [];
+}
+
+async function classifyChunk(mails) {
+  const res = await fetch('/api/classify', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      mails: mails.map((m) => ({ subject: m.subject, from: m.from, snippet: m.snippet })),
+    }),
+  });
+  if (!res.ok) throw new Error(`分類に失敗しました (HTTP ${res.status})`);
+  const data = await res.json();
+  return data.results || [];
+}
+
+function render(classifiedMails) {
+  resultsEl.innerHTML = '';
+  const groups = {};
+  for (const m of classifiedMails) {
+    const cat = CATEGORY_LABELS[m.category] ? m.category : 'other';
+    (groups[cat] ||= []).push(m);
+  }
+
+  for (const cat of CATEGORY_ORDER) {
+    const mails = groups[cat];
+    if (!mails || mails.length === 0) continue;
+
+    const section = document.createElement('div');
+    section.className = 'cat-group';
+
+    const title = document.createElement('div');
+    title.className = 'cat-title';
+    title.innerHTML = `<span class="badge badge-${cat}">${CATEGORY_LABELS[cat]}</span><span class="cat-count">${mails.length}件</span>`;
+    section.appendChild(title);
+
+    for (const m of mails) {
+      const card = document.createElement('div');
+      card.className = 'mail-card';
+      const date = m.date ? new Date(m.date).toLocaleString('ja-JP') : '';
+      card.innerHTML = `
+        <div class="mail-subject">${escapeHtml(m.subject || '(件名なし)')}</div>
+        <div class="mail-meta">${escapeHtml(m.from || '')}${date ? ' ・ ' + date : ''}</div>
+        <div class="mail-snippet">${escapeHtml((m.snippet || '').slice(0, 140))}</div>
+      `;
+      section.appendChild(card);
+    }
+    resultsEl.appendChild(section);
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+fetchBtn.addEventListener('click', async () => {
+  const vercelUrl = urlInput.value.trim();
+  if (!vercelUrl) {
+    statusEl.textContent = 'Vercel APIのURLを入力してください';
+    return;
+  }
+  localStorage.setItem('vercelUrl', vercelUrl);
+
+  fetchBtn.disabled = true;
+  resultsEl.innerHTML = '';
+  try {
+    statusEl.textContent = 'メールを取得中...';
+    const mails = await fetchMails(vercelUrl);
+
+    if (mails.length === 0) {
+      statusEl.textContent = 'メールが見つかりませんでした';
+      return;
+    }
+
+    const batches = chunk(mails, 10);
+    const classified = [];
+
+    for (let i = 0; i < batches.length; i++) {
+      statusEl.textContent = `分類中... (${i + 1}/${batches.length}バッチ)`;
+      const batchResult = await classifyChunk(batches[i]);
+      // 元のdate/seqをマージ
+      batches[i].forEach((original, idx) => {
+        classified.push({ ...original, ...batchResult[idx] });
+      });
+      render(classified); // 進捗が見えるよう都度描画
+    }
+
+    statusEl.textContent = `完了: ${classified.length}件を分類しました`;
+  } catch (err) {
+    statusEl.textContent = `エラー: ${err.message}`;
+  } finally {
+    fetchBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
