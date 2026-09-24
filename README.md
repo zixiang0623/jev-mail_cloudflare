@@ -6,7 +6,7 @@ Cloudflare Workers + 静的アセット + Workers AI binding によるメール�
 ## 構成
 
 - `public/index.html` — フロントエンド(単一HTMLファイル)。「メールを取得」を押すとVercel APIを叩き、10件ずつ `/api/classify` に投げて仕分け結果を表示する
-- `src/index.js` — Worker本体。`/api/classify` へのPOSTをJevで処理し、それ以外は静的アセットを返す
+- `src/index.js` — Worker本体。`/api/classify` へのPOSTをJevで処理し、それ以外は静的アセットを返す。カテゴリは `important`(重要) / `security`(セキュリティ通知) / `payment`(支払い・請求) / `system`(システム通知) / `promotion`(広告・メルマガ) / `other`(その他) の6分類
 - `wrangler.toml` — `[ai]` binding と `[assets]` (public/ を配信)を設定済み
 
 ## デプロイ

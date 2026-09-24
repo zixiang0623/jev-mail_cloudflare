@@ -1,14 +1,32 @@
 const CATEGORIES = {
-  notice: '通知(no-replyやシステム通知など、返信不要なもの)',
-  payment: '支払い(請求書、領収書、カード利用明細など)',
-  important: '重要(人間からの個別連絡、締切や対応が必要なもの)',
-  other: 'その他(上記のいずれにも当てはまらないもの)',
+  important:
+    '重要:実在の人物があなた個人に宛てて書いた、返信や対応が必要な連絡。自動送信メール・広告・システム通知はここに含めない',
+  security:
+    'セキュリティ通知:ログイン検知、パスワード変更、二段階認証コード、不審なアクセスの警告など、アカウントの安全性に関する自動通知',
+  payment:
+    '支払い・請求:請求書、領収書、カード利用明細、サブスクリプションの更新/支払い完了/失敗の通知',
+  system:
+    'システム通知:デプロイ結果、エラーアラート、CI/CD、サービスからの自動配信で、セキュリティにも支払いにも当てはまらないもの',
+  promotion:
+    '広告・メルマガ:セール、キャンペーン、新機能紹介、ニュースレターなど宣伝目的のメール',
+  other: 'その他:上記のいずれにも当てはまらないもの',
 };
 
 function extractAnswer(response, key) {
   // AI Gateway経由だと { state, result: { model, answers, usage }, gatewayMetadata } の形で
   // 一段ラップされる。Gatewayを介さない場合は { model, answers, usage } が直接返る想定なので、両方に対応する。
   return response?.result?.answers?.[key] ?? response?.answers?.[key];
+}
+
+function buildCategoryQuestion() {
+  return {
+    type: 'choice',
+    instructions:
+      '送信者のアドレス・件名・本文冒頭から、最も当てはまるカテゴリを1つ選んで。' +
+      'no-replyアドレスや自動配信システムからのメールは重要には分類しない。' +
+      '重要は、実在の個人からあなた宛てに具体的な用件が書かれている場合のみ選ぶこと。',
+    criteria: CATEGORIES,
+  };
 }
 
 async function classifyOne(env, mail) {
@@ -22,13 +40,7 @@ async function classifyOne(env, mail) {
 
   const response = await env.AI.run('typesafe/jev', {
     state,
-    questions: {
-      category: {
-        type: 'choice',
-        instructions: 'このメール(件名・送信者・本文冒頭)を最も当てはまるカテゴリに分類して',
-        criteria: CATEGORIES,
-      },
-    },
+    questions: { category: buildCategoryQuestion() },
   });
 
   const answer = extractAnswer(response, 'category');
@@ -85,22 +97,34 @@ async function handleClassify(request, env) {
 
 const DEBUG_SAMPLES = [
   {
-    label: '明らかに重要(人からの個別連絡)',
+    label: '重要(人からの個別連絡)',
     subject: '至急ご確認ください:明日の会議について',
     from: '田中太郎 <tanaka@example.com>',
     snippet: '明日14時からの会議の件でご確認したいことがあります。資料を添付しましたのでご確認お願いします。',
   },
   {
-    label: '明らかに支払い(請求書)',
+    label: '支払い(請求書)',
     subject: 'ご請求書発行のお知らせ(2026年9月分)',
     from: 'AWS請求 <billing@aws.example.com>',
     snippet: '2026年9月分のご利用料金は12,340円です。お支払い期限は10月15日です。',
   },
   {
-    label: '明らかに通知(システム通知)',
+    label: 'セキュリティ通知',
     subject: 'セキュリティ通知',
     from: 'Google <no-reply@accounts.google.com>',
     snippet: 'アカウントで新しいデバイスからのログインを検知しました。',
+  },
+  {
+    label: 'システム通知(デプロイ結果)',
+    subject: '2 deployments failed for main at 61769da',
+    from: 'Vercel <notifications@vercel.com>',
+    snippet: '2 deployments for branch main at commit 61769da could not be completed.',
+  },
+  {
+    label: '広告・メルマガ',
+    subject: '【9/24 18:00〜】ブレイク祭day1!! 遂に新機能実装',
+    from: 'エクストレカ <notice@ex-toreca.com>',
+    snippet: '本日18時よりブレイク祭スタート。新機能実装記念キャンペーン中です。',
   },
 ];
 
@@ -114,13 +138,7 @@ async function handleDebug(env) {
             from: sample.from,
             snippet: sample.snippet,
           }),
-          questions: {
-            category: {
-              type: 'choice',
-              instructions: 'このメール(件名・送信者・本文冒頭)を最も当てはまるカテゴリに分類して',
-              criteria: CATEGORIES,
-            },
-          },
+          questions: { category: buildCategoryQuestion() },
         });
         return {
           label: sample.label,

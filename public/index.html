@@ -86,10 +86,12 @@
     padding: 1px 8px;
     border-radius: 10px;
   }
-  .badge-notice   { background: #E6F1FB; color: #0C447C; }
-  .badge-payment  { background: #FAEEDA; color: #633806; }
-  .badge-important{ background: #FCEBEB; color: #791F1F; }
-  .badge-other    { background: #F1EFE8; color: #444441; }
+  .badge-important { background: #FCEBEB; color: #791F1F; }
+  .badge-security  { background: #F3E8FD; color: #4C1D8C; }
+  .badge-payment   { background: #FAEEDA; color: #633806; }
+  .badge-system    { background: #E6F1FB; color: #0C447C; }
+  .badge-promotion { background: #E7F6EC; color: #14532D; }
+  .badge-other     { background: #F1EFE8; color: #444441; }
 </style>
 </head>
 <body>
@@ -109,12 +111,14 @@
 
 <script>
 const CATEGORY_LABELS = {
-  notice: '通知',
-  payment: '支払い',
   important: '重要',
+  security: 'セキュリティ',
+  payment: '支払い',
+  system: 'システム通知',
+  promotion: '広告・メルマガ',
   other: 'その他',
 };
-const CATEGORY_ORDER = ['important', 'payment', 'notice', 'other'];
+const CATEGORY_ORDER = ['important', 'security', 'payment', 'system', 'promotion', 'other'];
 
 const $ = (sel) => document.querySelector(sel);
 const fetchBtn = $('#fetchBtn');
